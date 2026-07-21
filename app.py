@@ -543,7 +543,7 @@ class AppHandler(BaseHTTPRequestHandler):
         FARMS.append(farm)
         self.send_json({"status": "created", "farm": asdict(farm)}, HTTPStatus.CREATED)
 
-    def log_message(self, format: str, *args: Any) -> None:
+    def log_message(self, msg_format: str, *args: Any) -> None:
         return
 
     def send_json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:

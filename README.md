@@ -14,7 +14,7 @@ company in Haiti to:
 
 ## Run the application
 
-From `/home/runner/work/National-AI-powered-Aquaculture-Farm-Management-Intelligence-Platform/National-AI-powered-Aquaculture-Farm-Management-Intelligence-Platform` run:
+From the repository root run:
 
 ```bash
 python app.py

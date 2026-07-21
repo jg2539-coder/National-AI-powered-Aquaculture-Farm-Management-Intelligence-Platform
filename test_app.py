@@ -28,6 +28,33 @@ class AquacultureAppTests(unittest.TestCase):
         self.assertGreaterEqual(prediction["health_score"], 80)
         self.assertGreater(prediction["estimated_growth_g_week"], 0)
 
+    def test_predict_farm_status_flags_poor_conditions(self) -> None:
+        farm = FarmRecord(
+            farm_name="Risk Farm",
+            department="Centre",
+            species="Shrimp",
+            production_type="Shellfish",
+            population=15000,
+            average_weight_grams=24,
+            water_temperature_c=33.0,
+            dissolved_oxygen_mg_l=3.8,
+            ph=6.5,
+            salinity_ppt=10.0,
+            turbidity_ntu=38.0,
+            feed_kg_day=90,
+            mortality_rate_pct=6.5,
+            disease_signals="Heat stress and lesions observed",
+        )
+
+        prediction = predict_farm_status(farm)
+
+        self.assertEqual(prediction["temperature_status"], "Monitor")
+        self.assertLess(prediction["health_score"], 55)
+        self.assertEqual(
+            prediction["recommended_action"],
+            "Increase aeration and reduce afternoon feeding.",
+        )
+
     def test_build_dashboard_payload_includes_haiti_departments_and_farms(self) -> None:
         payload = build_dashboard_payload()
 
