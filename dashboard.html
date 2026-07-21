@@ -199,6 +199,7 @@
           <label>Disease signals<input name="disease_signals" value="None observed"></label>
           <div><button type="submit">Add observation</button></div>
         </form>
+        <p id="form-status" class="footnote" aria-live="polite"></p>
       </div>
     </section>
     <section class="panel" style="margin-top: 20px;">
@@ -274,18 +275,28 @@
       event.preventDefault();
       const formData = new FormData(event.target);
       const payload = Object.fromEntries(formData.entries());
+      const status = document.querySelector("#form-status");
       [
         "population", "average_weight_grams", "water_temperature_c", "dissolved_oxygen_mg_l",
         "ph", "salinity_ppt", "turbidity_ntu", "feed_kg_day", "mortality_rate_pct"
       ].forEach((key) => payload[key] = Number(payload[key]));
 
-      await fetch("/api/farms", {
+      const response = await fetch("/api/farms", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(payload)
       });
 
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({error: "Unable to save the farm observation."}));
+        status.textContent = error.error || "Unable to save the farm observation.";
+        status.className = "footnote risk";
+        return;
+      }
+
       event.target.reset();
+      status.textContent = "Farm observation saved successfully.";
+      status.className = "footnote good";
       render();
     });
 

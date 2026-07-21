@@ -75,13 +75,16 @@ class FarmRecord:
         department = str(payload["department"]).strip()
         if department not in SUPPORTED_DEPARTMENTS:
             raise ValueError("Department must be one of the Haiti department names in the dashboard.")
+        population = int(payload["population"])
+        if population < 0:
+            raise ValueError("Population must be non-negative.")
 
         return cls(
             farm_name=str(payload["farm_name"]).strip(),
             department=department,
             species=str(payload["species"]).strip(),
             production_type=str(payload["production_type"]).strip(),
-            population=max(0, int(payload["population"])),
+            population=population,
             average_weight_grams=max(0.0, float(payload["average_weight_grams"])),
             water_temperature_c=float(payload["water_temperature_c"]),
             dissolved_oxygen_mg_l=float(payload["dissolved_oxygen_mg_l"]),
