@@ -21,6 +21,7 @@ HAITI_DEPARTMENTS = [
     {"name": "Sud", "x": 10, "y": 82},
     {"name": "Grand'Anse", "x": 2, "y": 66},
 ]
+SUPPORTED_DEPARTMENTS = {item["name"] for item in HAITI_DEPARTMENTS}
 
 FISH_TARGET_TEMPERATURE = 28.0
 SHELLFISH_TARGET_TEMPERATURE = 26.0
@@ -71,9 +72,13 @@ class FarmRecord:
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "FarmRecord":
+        department = str(payload["department"]).strip()
+        if department not in SUPPORTED_DEPARTMENTS:
+            raise ValueError("Department must be one of the Haiti department names in the dashboard.")
+
         return cls(
             farm_name=str(payload["farm_name"]).strip(),
-            department=str(payload["department"]).strip(),
+            department=department,
             species=str(payload["species"]).strip(),
             production_type=str(payload["production_type"]).strip(),
             population=max(0, int(payload["population"])),
@@ -166,7 +171,7 @@ def predict_farm_status(farm: FarmRecord) -> dict[str, Any]:
     ph_penalty = abs(farm.ph - IDEAL_PH) * PH_PENALTY_RATE
     mortality_penalty = clamp(farm.mortality_rate_pct * MORTALITY_PENALTY_RATE, 0, MAX_MORTALITY_PENALTY)
     turbidity_penalty = clamp(
-        (farm.turbidity_ntu - TURBIDITY_THRESHOLD) * TURBIDITY_PENALTY_RATE,
+        max(0.0, farm.turbidity_ntu - TURBIDITY_THRESHOLD) * TURBIDITY_PENALTY_RATE,
         0,
         MAX_TURBIDITY_PENALTY,
     )
@@ -225,7 +230,7 @@ def build_dashboard_payload() -> dict[str, Any]:
 
     for farm in FARMS:
         prediction = predict_farm_status(farm)
-        department_rollup.setdefault(farm.department, []).append(prediction["health_score"])
+        department_rollup[farm.department].append(prediction["health_score"])
         farm_entries.append({**asdict(farm), "prediction": prediction})
 
     departments = []

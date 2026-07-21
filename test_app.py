@@ -82,6 +82,27 @@ class AquacultureAppTests(unittest.TestCase):
             }.issubset(payload["farms"][0]["prediction"])
         )
 
+    def test_from_payload_rejects_unsupported_department(self) -> None:
+        with self.assertRaises(ValueError):
+            FarmRecord.from_payload(
+                {
+                    "farm_name": "Invalid Department Farm",
+                    "department": "Unknown",
+                    "species": "Tilapia",
+                    "production_type": "Fish",
+                    "population": 1000,
+                    "average_weight_grams": 120,
+                    "water_temperature_c": 28,
+                    "dissolved_oxygen_mg_l": 6.0,
+                    "ph": 7.5,
+                    "salinity_ppt": 1.0,
+                    "turbidity_ntu": 10.0,
+                    "feed_kg_day": 24,
+                    "mortality_rate_pct": 0.5,
+                    "disease_signals": "None observed",
+                }
+            )
+
     def test_post_invalid_json_returns_bad_request(self) -> None:
         server = ThreadingHTTPServer(("127.0.0.1", 0), AppHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -103,6 +124,7 @@ class AquacultureAppTests(unittest.TestCase):
         finally:
             server.shutdown()
             thread.join(timeout=2)
+            self.assertFalse(thread.is_alive())
             server.server_close()
 
 
