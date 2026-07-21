@@ -1,6 +1,10 @@
+import json
+import threading
 import unittest
+import urllib.error
+import urllib.request
 
-from app import FARMS, FarmRecord, build_dashboard_payload, predict_farm_status
+from app import AppHandler, FARMS, FarmRecord, ThreadingHTTPServer, build_dashboard_payload, predict_farm_status
 
 
 class AquacultureAppTests(unittest.TestCase):
@@ -62,6 +66,44 @@ class AquacultureAppTests(unittest.TestCase):
         self.assertEqual(len(payload["departments"]), 10)
         self.assertEqual(payload["overview"]["farm_count"], len(FARMS))
         self.assertTrue(any(farm["production_type"] == "Shellfish" for farm in payload["farms"]))
+        self.assertTrue(
+            {"name", "x", "y", "farm_count", "average_health", "status"}.issubset(payload["departments"][0])
+        )
+        self.assertTrue(
+            {
+                "water_quality_score",
+                "water_quality_status",
+                "health_score",
+                "health_status",
+                "temperature_status",
+                "estimated_growth_g_week",
+                "feeding_adjustment_pct",
+                "recommended_action",
+            }.issubset(payload["farms"][0]["prediction"])
+        )
+
+    def test_post_invalid_json_returns_bad_request(self) -> None:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), AppHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+
+        try:
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{server.server_port}/api/farms",
+                data=b"{bad json",
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as error_context:
+                urllib.request.urlopen(request)
+
+            self.assertEqual(error_context.exception.code, 400)
+            response_body = json.loads(error_context.exception.read().decode("utf-8"))
+            self.assertEqual(response_body["error"], "Invalid JSON payload")
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+            server.server_close()
 
 
 if __name__ == "__main__":

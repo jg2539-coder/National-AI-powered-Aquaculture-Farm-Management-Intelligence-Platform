@@ -4,6 +4,7 @@ import json
 from dataclasses import asdict, dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -20,6 +21,35 @@ HAITI_DEPARTMENTS = [
     {"name": "Sud", "x": 10, "y": 82},
     {"name": "Grand'Anse", "x": 2, "y": 66},
 ]
+
+FISH_TARGET_TEMPERATURE = 28.0
+SHELLFISH_TARGET_TEMPERATURE = 26.0
+TEMPERATURE_PENALTY_RATE = 4.5
+BASELINE_DISSOLVED_OXYGEN = 4.5
+OXYGEN_BONUS_RATE = 8.0
+MAX_OXYGEN_BONUS = 20.0
+IDEAL_PH = 7.6
+PH_PENALTY_RATE = 10.0
+MORTALITY_PENALTY_RATE = 7.0
+MAX_MORTALITY_PENALTY = 35.0
+TURBIDITY_THRESHOLD = 20.0
+TURBIDITY_PENALTY_RATE = 1.2
+MAX_TURBIDITY_PENALTY = 18.0
+DISEASE_SIGNAL_PENALTY = 18.0
+FISH_GROWTH_RATE = 0.045
+SHELLFISH_GROWTH_RATE = 0.03
+FEED_CONVERSION_MULTIPLIER = 1000.0
+OXYGEN_GROWTH_MULTIPLIER = 0.08
+TEMPERATURE_GROWTH_PENALTY = 0.1
+MIN_GROWTH_ESTIMATE = 0.5
+MAX_GROWTH_ESTIMATE = 40.0
+TARGET_FEEDING_OXYGEN = 7.0
+TEMPERATURE_FEED_ADJUSTMENT_RATE = -2.2
+OXYGEN_FEED_ADJUSTMENT_RATE = 3.5
+MIN_FEED_ADJUSTMENT = -15.0
+MAX_FEED_ADJUSTMENT = 20.0
+OPTIMAL_TEMPERATURE_PENALTY_THRESHOLD = 6.0
+HEALTH_ALERT_THRESHOLD = 55.0
 
 
 @dataclass
@@ -126,29 +156,50 @@ def score_band(score: float) -> str:
 
 
 def predict_farm_status(farm: FarmRecord) -> dict[str, Any]:
-    target_temp = 28.0 if farm.production_type == "Fish" else 26.0
-    temp_penalty = abs(farm.water_temperature_c - target_temp) * 4.5
-    oxygen_bonus = clamp((farm.dissolved_oxygen_mg_l - 4.5) * 8, 0, 20)
-    ph_penalty = abs(farm.ph - 7.6) * 10
-    mortality_penalty = clamp(farm.mortality_rate_pct * 7, 0, 35)
-    turbidity_penalty = clamp((farm.turbidity_ntu - 20) * 1.2, 0, 18)
-    disease_penalty = 18 if "stress" in farm.disease_signals.lower() or "lesion" in farm.disease_signals.lower() else 0
+    target_temp = FISH_TARGET_TEMPERATURE if farm.production_type == "Fish" else SHELLFISH_TARGET_TEMPERATURE
+    temp_penalty = abs(farm.water_temperature_c - target_temp) * TEMPERATURE_PENALTY_RATE
+    oxygen_bonus = clamp(
+        (farm.dissolved_oxygen_mg_l - BASELINE_DISSOLVED_OXYGEN) * OXYGEN_BONUS_RATE,
+        0,
+        MAX_OXYGEN_BONUS,
+    )
+    ph_penalty = abs(farm.ph - IDEAL_PH) * PH_PENALTY_RATE
+    mortality_penalty = clamp(farm.mortality_rate_pct * MORTALITY_PENALTY_RATE, 0, MAX_MORTALITY_PENALTY)
+    turbidity_penalty = clamp(
+        (farm.turbidity_ntu - TURBIDITY_THRESHOLD) * TURBIDITY_PENALTY_RATE,
+        0,
+        MAX_TURBIDITY_PENALTY,
+    )
+    disease_penalty = (
+        DISEASE_SIGNAL_PENALTY
+        if "stress" in farm.disease_signals.lower() or "lesion" in farm.disease_signals.lower()
+        else 0
+    )
 
     water_quality_score = clamp(100 - temp_penalty - ph_penalty - turbidity_penalty + oxygen_bonus, 0, 100)
     health_score = clamp(water_quality_score - mortality_penalty - disease_penalty, 0, 100)
     estimated_growth_g_week = round(
         clamp(
-            (farm.average_weight_grams * 0.045 if farm.production_type == "Fish" else farm.average_weight_grams * 0.03)
-            + (farm.feed_kg_day / max(farm.population, 1)) * 1000
-            + oxygen_bonus * 0.08
-            - temp_penalty * 0.1,
-            0.5,
-            40.0,
+            (
+                farm.average_weight_grams * FISH_GROWTH_RATE
+                if farm.production_type == "Fish"
+                else farm.average_weight_grams * SHELLFISH_GROWTH_RATE
+            )
+            + (farm.feed_kg_day / max(farm.population, 1)) * FEED_CONVERSION_MULTIPLIER
+            + oxygen_bonus * OXYGEN_GROWTH_MULTIPLIER
+            - temp_penalty * TEMPERATURE_GROWTH_PENALTY,
+            MIN_GROWTH_ESTIMATE,
+            MAX_GROWTH_ESTIMATE,
         ),
         2,
     )
     feeding_adjustment_pct = round(
-        clamp((target_temp - farm.water_temperature_c) * -2.2 + (7 - farm.dissolved_oxygen_mg_l) * 3.5, -15, 20),
+        clamp(
+            (target_temp - farm.water_temperature_c) * TEMPERATURE_FEED_ADJUSTMENT_RATE
+            + (TARGET_FEEDING_OXYGEN - farm.dissolved_oxygen_mg_l) * OXYGEN_FEED_ADJUSTMENT_RATE,
+            MIN_FEED_ADJUSTMENT,
+            MAX_FEED_ADJUSTMENT,
+        ),
         1,
     )
 
@@ -157,12 +208,12 @@ def predict_farm_status(farm: FarmRecord) -> dict[str, Any]:
         "water_quality_status": score_band(water_quality_score),
         "health_score": round(health_score, 1),
         "health_status": score_band(health_score),
-        "temperature_status": "Optimal" if temp_penalty < 6 else "Monitor",
+        "temperature_status": "Optimal" if temp_penalty < OPTIMAL_TEMPERATURE_PENALTY_THRESHOLD else "Monitor",
         "estimated_growth_g_week": estimated_growth_g_week,
         "feeding_adjustment_pct": feeding_adjustment_pct,
         "recommended_action": (
             "Increase aeration and reduce afternoon feeding."
-            if health_score < 55
+            if health_score < HEALTH_ALERT_THRESHOLD
             else "Maintain current operations and continue monitoring."
         ),
     }
@@ -213,302 +264,11 @@ def build_dashboard_payload() -> dict[str, Any]:
     }
 
 
-HTML = """<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>National AI Aquaculture Intelligence Platform</title>
-  <style>
-    :root {
-      --bg: #071826;
-      --panel: #0e2233;
-      --panel-alt: #12304a;
-      --line: rgba(255,255,255,0.08);
-      --text: #eef7ff;
-      --muted: #9bb7cb;
-      --accent: #4dd0e1;
-      --good: #2ecc71;
-      --warn: #f1c40f;
-      --risk: #e74c3c;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: Arial, Helvetica, sans-serif;
-      background: linear-gradient(135deg, #04111d, #0a2740 60%, #113f59);
-      color: var(--text);
-    }
-    .page {
-      max-width: 1280px;
-      margin: 0 auto;
-      padding: 24px;
-    }
-    .hero, .panel {
-      background: rgba(14, 34, 51, 0.92);
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
-    }
-    .hero {
-      padding: 28px;
-      display: grid;
-      gap: 10px;
-      margin-bottom: 20px;
-    }
-    .hero h1 { margin: 0; font-size: 2rem; }
-    .hero p { margin: 0; color: var(--muted); max-width: 820px; }
-    .metrics, .layout {
-      display: grid;
-      gap: 16px;
-    }
-    .metrics {
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      margin-bottom: 20px;
-    }
-    .metric, .panel { padding: 18px; }
-    .metric {
-      background: rgba(7, 24, 38, 0.9);
-      border: 1px solid var(--line);
-      border-radius: 16px;
-    }
-    .metric span { color: var(--muted); display: block; margin-bottom: 8px; }
-    .metric strong { font-size: 1.7rem; }
-    .layout {
-      grid-template-columns: 1.4fr 1fr;
-      align-items: start;
-    }
-    .grid-2 {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 14px;
-    }
-    .map {
-      position: relative;
-      min-height: 380px;
-      border-radius: 16px;
-      background:
-        radial-gradient(circle at 10% 20%, rgba(77, 208, 225, 0.18), transparent 25%),
-        linear-gradient(180deg, rgba(18,48,74,0.95), rgba(7,24,38,0.95));
-      overflow: hidden;
-      border: 1px solid var(--line);
-    }
-    .map::before {
-      content: "";
-      position: absolute;
-      inset: 10% 8%;
-      border-radius: 32% 48% 35% 42%;
-      border: 1px dashed rgba(255,255,255,0.08);
-    }
-    .dept {
-      position: absolute;
-      width: 122px;
-      transform: translate(-50%, -50%);
-      padding: 10px;
-      border-radius: 14px;
-      background: rgba(4, 17, 29, 0.88);
-      border: 1px solid var(--line);
-    }
-    .dept strong { display: block; margin-bottom: 6px; font-size: 0.92rem; }
-    .dept small { color: var(--muted); display: block; }
-    .good { color: var(--good); }
-    .warn { color: var(--warn); }
-    .risk { color: var(--risk); }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 8px;
-    }
-    th, td {
-      text-align: left;
-      padding: 10px 8px;
-      border-bottom: 1px solid var(--line);
-      vertical-align: top;
-    }
-    th { color: var(--muted); font-size: 0.84rem; }
-    form {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 12px;
-    }
-    label {
-      display: grid;
-      gap: 6px;
-      font-size: 0.88rem;
-      color: var(--muted);
-    }
-    input, select {
-      width: 100%;
-      border: 1px solid var(--line);
-      background: var(--bg);
-      color: var(--text);
-      border-radius: 12px;
-      padding: 10px 12px;
-    }
-    button {
-      margin-top: 8px;
-      border: 0;
-      border-radius: 12px;
-      padding: 12px 16px;
-      background: linear-gradient(135deg, #26c6da, #00acc1);
-      color: #042131;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .section-title {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: center;
-      margin-bottom: 14px;
-    }
-    .section-title h2 {
-      margin: 0;
-      font-size: 1.1rem;
-    }
-    .footnote { color: var(--muted); font-size: 0.85rem; }
-    @media (max-width: 920px) {
-      .layout { grid-template-columns: 1fr; }
-      .map { min-height: 520px; }
-    }
-  </style>
-</head>
-<body>
-  <div class="page">
-    <section class="hero">
-      <h1>National AI Aquaculture Intelligence Platform</h1>
-      <p>
-        A simple, beautiful dashboard for Haiti-wide fish and shellfish farm monitoring,
-        combining operational data collection with AI-assisted predictions for feeding,
-        growth, water quality, temperature, and health.
-      </p>
-    </section>
-    <section id="metrics" class="metrics"></section>
-    <section class="layout">
-      <div class="panel">
-        <div class="section-title">
-          <h2>Haiti Department Map View</h2>
-          <span class="footnote">Territorial coverage across all 10 departments</span>
-        </div>
-        <div id="map" class="map"></div>
-      </div>
-      <div class="panel">
-        <div class="section-title">
-          <h2>Register a Farm Observation</h2>
-          <span class="footnote">Data collection for company teams</span>
-        </div>
-        <form id="farm-form">
-          <label>Farm name<input name="farm_name" required value="Ouest Lagoon Farm"></label>
-          <label>Department<select name="department"></select></label>
-          <label>Species<input name="species" required value="Tilapia"></label>
-          <label>Production type<select name="production_type"><option>Fish</option><option>Shellfish</option></select></label>
-          <label>Population<input name="population" type="number" min="0" value="12000"></label>
-          <label>Avg weight (g)<input name="average_weight_grams" type="number" step="0.1" min="0" value="180"></label>
-          <label>Temperature °C<input name="water_temperature_c" type="number" step="0.1" value="29"></label>
-          <label>Dissolved oxygen<input name="dissolved_oxygen_mg_l" type="number" step="0.1" value="5.8"></label>
-          <label>pH<input name="ph" type="number" step="0.1" value="7.5"></label>
-          <label>Salinity ppt<input name="salinity_ppt" type="number" step="0.1" value="2"></label>
-          <label>Turbidity NTU<input name="turbidity_ntu" type="number" step="0.1" value="20"></label>
-          <label>Feed kg/day<input name="feed_kg_day" type="number" step="0.1" value="240"></label>
-          <label>Mortality %<input name="mortality_rate_pct" type="number" step="0.1" value="1.2"></label>
-          <label>Disease signals<input name="disease_signals" value="None observed"></label>
-          <div><button type="submit">Add observation</button></div>
-        </form>
-      </div>
-    </section>
-    <section class="panel" style="margin-top: 20px;">
-      <div class="section-title">
-        <h2>Farm Intelligence Table</h2>
-        <span class="footnote">AI-assisted operations recommendations</span>
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Farm</th>
-            <th>Department</th>
-            <th>Species</th>
-            <th>Water quality</th>
-            <th>Health</th>
-            <th>Growth / week</th>
-            <th>Feeding action</th>
-          </tr>
-        </thead>
-        <tbody id="farm-table"></tbody>
-      </table>
-    </section>
-  </div>
-  <script>
-    const toneClass = (status) => {
-      if (["Excellent", "Optimal"].includes(status)) return "good";
-      if (["Stable", "Watch", "Monitor"].includes(status)) return "warn";
-      return "risk";
-    };
+TEMPLATE_PATH = Path(__file__).with_name("dashboard.html")
 
-    const render = async () => {
-      const response = await fetch("/api/overview");
-      const data = await response.json();
 
-      document.querySelector("#metrics").innerHTML = [
-        ["Active farms", data.overview.farm_count],
-        ["Fish farms", data.overview.fish_farms],
-        ["Shellfish farms", data.overview.shellfish_farms],
-        ["Tracked stock", data.overview.total_population.toLocaleString()],
-        ["Average health", data.overview.average_health_score]
-      ].map(([label, value]) => `
-        <div class="metric">
-          <span>${label}</span>
-          <strong>${value}</strong>
-        </div>
-      `).join("");
-
-      document.querySelector("#map").innerHTML = data.departments.map((dept) => `
-        <div class="dept" style="left:${dept.x}%; top:${dept.y}%;">
-          <strong>${dept.name}</strong>
-          <small>${dept.farm_count} farm(s)</small>
-          <small class="${toneClass(dept.status)}">${dept.status}${dept.farm_count ? ` · ${dept.average_health}` : ""}</small>
-        </div>
-      `).join("");
-
-      document.querySelector("#farm-table").innerHTML = data.farms.map((farm) => `
-        <tr>
-          <td><strong>${farm.farm_name}</strong><br><span class="footnote">${farm.production_type}</span></td>
-          <td>${farm.department}</td>
-          <td>${farm.species}</td>
-          <td><span class="${toneClass(farm.prediction.water_quality_status)}">${farm.prediction.water_quality_score} · ${farm.prediction.water_quality_status}</span></td>
-          <td><span class="${toneClass(farm.prediction.health_status)}">${farm.prediction.health_score} · ${farm.prediction.health_status}</span></td>
-          <td>${farm.prediction.estimated_growth_g_week} g</td>
-          <td>${farm.prediction.feeding_adjustment_pct > 0 ? "+" : ""}${farm.prediction.feeding_adjustment_pct}%<br><span class="footnote">${farm.prediction.recommended_action}</span></td>
-        </tr>
-      `).join("");
-
-      const departmentSelect = document.querySelector("select[name='department']");
-      departmentSelect.innerHTML = data.departments.map((dept) => `<option>${dept.name}</option>`).join("");
-    };
-
-    document.querySelector("#farm-form").addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const formData = new FormData(event.target);
-      const payload = Object.fromEntries(formData.entries());
-      [
-        "population", "average_weight_grams", "water_temperature_c", "dissolved_oxygen_mg_l",
-        "ph", "salinity_ppt", "turbidity_ntu", "feed_kg_day", "mortality_rate_pct"
-      ].forEach((key) => payload[key] = Number(payload[key]));
-
-      await fetch("/api/farms", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(payload)
-      });
-
-      event.target.reset();
-      render();
-    });
-
-    render();
-  </script>
-</body>
-</html>
-"""
+def load_dashboard_html() -> str:
+    return TEMPLATE_PATH.read_text(encoding="utf-8")
 
 
 class AppHandler(BaseHTTPRequestHandler):
@@ -518,7 +278,7 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(HTML.encode("utf-8"))
+            self.wfile.write(load_dashboard_html().encode("utf-8"))
             return
 
         if route == "/api/overview":
@@ -538,8 +298,16 @@ class AppHandler(BaseHTTPRequestHandler):
             return
 
         length = int(self.headers.get("Content-Length", "0"))
-        payload = json.loads(self.rfile.read(length) or b"{}")
-        farm = FarmRecord.from_payload(payload)
+        try:
+            payload = json.loads(self.rfile.read(length) or b"{}")
+            farm = FarmRecord.from_payload(payload)
+        except json.JSONDecodeError:
+            self.send_json({"error": "Invalid JSON payload"}, HTTPStatus.BAD_REQUEST)
+            return
+        except (KeyError, TypeError, ValueError):
+            self.send_json({"error": "Invalid farm observation payload"}, HTTPStatus.BAD_REQUEST)
+            return
+
         FARMS.append(farm)
         self.send_json({"status": "created", "farm": asdict(farm)}, HTTPStatus.CREATED)
 
