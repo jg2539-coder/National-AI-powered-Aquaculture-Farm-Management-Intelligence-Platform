@@ -8,6 +8,12 @@ from app import AppHandler, FARMS, FarmRecord, ThreadingHTTPServer, build_dashbo
 
 
 class AquacultureAppTests(unittest.TestCase):
+    def start_test_server(self) -> tuple[ThreadingHTTPServer, threading.Thread]:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), AppHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        return server, thread
+
     def test_predict_farm_status_optimal_conditions(self) -> None:
         farm = FarmRecord(
             farm_name="Test Farm",
@@ -145,10 +151,29 @@ class AquacultureAppTests(unittest.TestCase):
                 }
             )
 
+    def test_from_payload_rejects_invalid_ph(self) -> None:
+        with self.assertRaises(ValueError):
+            FarmRecord.from_payload(
+                {
+                    "farm_name": "Invalid Ph Farm",
+                    "department": "Ouest",
+                    "species": "Tilapia",
+                    "production_type": "Fish",
+                    "population": 100,
+                    "average_weight_grams": 2,
+                    "water_temperature_c": 28,
+                    "dissolved_oxygen_mg_l": 6.0,
+                    "ph": 15.1,
+                    "salinity_ppt": 1.0,
+                    "turbidity_ntu": 10.0,
+                    "feed_kg_day": 24,
+                    "mortality_rate_pct": 0.5,
+                    "disease_signals": "None observed",
+                }
+            )
+
     def test_post_invalid_json_returns_bad_request(self) -> None:
-        server = ThreadingHTTPServer(("127.0.0.1", 0), AppHandler)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
+        server, thread = self.start_test_server()
 
         try:
             request = urllib.request.Request(
@@ -163,6 +188,44 @@ class AquacultureAppTests(unittest.TestCase):
             self.assertEqual(error_context.exception.code, 400)
             response_body = json.loads(error_context.exception.read().decode("utf-8"))
             self.assertEqual(response_body["error"], "Invalid JSON payload")
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+            server.server_close()
+
+    def test_post_missing_required_field_returns_bad_request(self) -> None:
+        server, thread = self.start_test_server()
+
+        try:
+            payload = json.dumps(
+                {
+                    "farm_name": "Missing Field Farm",
+                    "department": "Ouest",
+                    "species": "Tilapia",
+                    "production_type": "Fish",
+                    "population": 100,
+                    "average_weight_grams": 10,
+                    "water_temperature_c": 28,
+                    "dissolved_oxygen_mg_l": 6,
+                    "ph": 7.5,
+                    "salinity_ppt": 1,
+                    "turbidity_ntu": 10,
+                    "mortality_rate_pct": 1,
+                    "disease_signals": "None observed",
+                }
+            ).encode("utf-8")
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{server.server_port}/api/farms",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with self.assertRaises(urllib.error.HTTPError) as error_context:
+                urllib.request.urlopen(request)
+
+            self.assertEqual(error_context.exception.code, 400)
+            response_body = json.loads(error_context.exception.read().decode("utf-8"))
+            self.assertEqual(response_body["error"], "Invalid farm observation payload")
         finally:
             server.shutdown()
             thread.join(timeout=2)

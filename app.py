@@ -60,6 +60,13 @@ def require_non_negative_float(value: Any, field_name: str) -> float:
     return numeric_value
 
 
+def require_bounded_float(value: Any, field_name: str, minimum: float, maximum: float) -> float:
+    numeric_value = float(value)
+    if numeric_value < minimum or numeric_value > maximum:
+        raise ValueError(f"{field_name} must be between {minimum} and {maximum}.")
+    return numeric_value
+
+
 @dataclass
 class FarmRecord:
     farm_name: str
@@ -93,9 +100,9 @@ class FarmRecord:
             production_type=str(payload["production_type"]).strip(),
             population=population,
             average_weight_grams=require_non_negative_float(payload["average_weight_grams"], "Average weight"),
-            water_temperature_c=float(payload["water_temperature_c"]),
-            dissolved_oxygen_mg_l=float(payload["dissolved_oxygen_mg_l"]),
-            ph=float(payload["ph"]),
+            water_temperature_c=require_non_negative_float(payload["water_temperature_c"], "Water temperature"),
+            dissolved_oxygen_mg_l=require_non_negative_float(payload["dissolved_oxygen_mg_l"], "Dissolved oxygen"),
+            ph=require_bounded_float(payload["ph"], "pH", 0.0, 14.0),
             salinity_ppt=require_non_negative_float(payload["salinity_ppt"], "Salinity"),
             turbidity_ntu=require_non_negative_float(payload["turbidity_ntu"], "Turbidity"),
             feed_kg_day=require_non_negative_float(payload["feed_kg_day"], "Feed"),
@@ -193,6 +200,7 @@ def predict_farm_status(farm: FarmRecord) -> dict[str, Any]:
 
     water_quality_score = clamp(100 - temp_penalty - ph_penalty - turbidity_penalty + oxygen_bonus, 0, 100)
     health_score = clamp(water_quality_score - mortality_penalty - disease_penalty, 0, 100)
+    feed_per_stock_unit = (farm.feed_kg_day / farm.population) * FEED_CONVERSION_MULTIPLIER if farm.population else 0.0
     estimated_growth_g_week = round(
         clamp(
             (
@@ -200,7 +208,7 @@ def predict_farm_status(farm: FarmRecord) -> dict[str, Any]:
                 if farm.production_type == "Fish"
                 else farm.average_weight_grams * SHELLFISH_GROWTH_RATE
             )
-            + (farm.feed_kg_day / max(farm.population, 1)) * FEED_CONVERSION_MULTIPLIER
+            + feed_per_stock_unit
             + oxygen_bonus * OXYGEN_GROWTH_MULTIPLIER
             - temp_penalty * TEMPERATURE_GROWTH_PENALTY,
             MIN_GROWTH_ESTIMATE,

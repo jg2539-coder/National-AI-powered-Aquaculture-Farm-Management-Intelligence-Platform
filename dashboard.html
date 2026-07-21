@@ -187,15 +187,15 @@
           <label>Department<select name="department"></select></label>
           <label>Species<input name="species" required placeholder="Enter species"></label>
           <label>Production type<select name="production_type"><option>Fish</option><option>Shellfish</option></select></label>
-          <label>Population<input name="population" type="number" min="0" required></label>
-          <label>Avg weight (g)<input name="average_weight_grams" type="number" step="0.1" min="0" required></label>
-          <label>Temperature °C<input name="water_temperature_c" type="number" step="0.1" min="0" required></label>
-          <label>Dissolved oxygen<input name="dissolved_oxygen_mg_l" type="number" step="0.1" min="0" required></label>
-          <label>pH<input name="ph" type="number" step="0.1" min="0" max="14" required></label>
-          <label>Salinity ppt<input name="salinity_ppt" type="number" step="0.1" min="0" required></label>
-          <label>Turbidity NTU<input name="turbidity_ntu" type="number" step="0.1" min="0" required></label>
-          <label>Feed kg/day<input name="feed_kg_day" type="number" step="0.1" min="0" required></label>
-          <label>Mortality %<input name="mortality_rate_pct" type="number" step="0.1" min="0" required></label>
+          <label>Population<input name="population" type="number" min="0" required data-type="number"></label>
+          <label>Avg weight (g)<input name="average_weight_grams" type="number" step="0.1" min="0" required data-type="number"></label>
+          <label>Temperature °C<input name="water_temperature_c" type="number" step="0.1" min="0" required data-type="number"></label>
+          <label>Dissolved oxygen<input name="dissolved_oxygen_mg_l" type="number" step="0.1" min="0" required data-type="number"></label>
+          <label>pH<input name="ph" type="number" step="0.1" min="0" max="14" required data-type="number"></label>
+          <label>Salinity ppt<input name="salinity_ppt" type="number" step="0.1" min="0" required data-type="number"></label>
+          <label>Turbidity NTU<input name="turbidity_ntu" type="number" step="0.1" min="0" required data-type="number"></label>
+          <label>Feed kg/day<input name="feed_kg_day" type="number" step="0.1" min="0" required data-type="number"></label>
+          <label>Mortality %<input name="mortality_rate_pct" type="number" step="0.1" min="0" required data-type="number"></label>
           <label>Disease signals<input name="disease_signals" placeholder="Optional health notes"></label>
           <div><button type="submit">Add observation</button></div>
         </form>
@@ -277,10 +277,9 @@
       const formData = new FormData(event.target);
       const payload = Object.fromEntries(formData.entries());
       const status = document.querySelector("#form-status");
-      [
-        "population", "average_weight_grams", "water_temperature_c", "dissolved_oxygen_mg_l",
-        "ph", "salinity_ppt", "turbidity_ntu", "feed_kg_day", "mortality_rate_pct"
-      ].forEach((key) => payload[key] = Number(payload[key]));
+      event.target.querySelectorAll("[data-type='number']").forEach((input) => {
+        payload[input.name] = Number(payload[input.name]);
+      });
 
       const response = await fetch("/api/farms", {
         method: "POST",
@@ -289,8 +288,8 @@
       });
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({error: "Unable to save the farm observation."}));
-        status.textContent = error.error || "Unable to save the farm observation.";
+        const error = await response.json().catch(() => ({error: "Unable to save the farm observation. Please check your input and try again."}));
+        status.textContent = error.error || "Unable to save the farm observation. Please check your input and try again.";
         status.className = "footnote risk";
         return;
       }
