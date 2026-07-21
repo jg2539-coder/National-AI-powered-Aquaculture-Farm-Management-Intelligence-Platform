@@ -183,22 +183,23 @@
           <span class="footnote">Data collection for company teams</span>
         </div>
         <form id="farm-form">
-          <label>Farm name<input name="farm_name" required value="Ouest Lagoon Farm"></label>
+          <label>Farm name<input name="farm_name" required placeholder="Enter farm name"></label>
           <label>Department<select name="department"></select></label>
-          <label>Species<input name="species" required value="Tilapia"></label>
+          <label>Species<input name="species" required placeholder="Enter species"></label>
           <label>Production type<select name="production_type"><option>Fish</option><option>Shellfish</option></select></label>
-          <label>Population<input name="population" type="number" min="0" value="12000"></label>
-          <label>Avg weight (g)<input name="average_weight_grams" type="number" step="0.1" min="0" value="180"></label>
-          <label>Temperature °C<input name="water_temperature_c" type="number" step="0.1" value="29"></label>
-          <label>Dissolved oxygen<input name="dissolved_oxygen_mg_l" type="number" step="0.1" value="5.8"></label>
-          <label>pH<input name="ph" type="number" step="0.1" value="7.5"></label>
-          <label>Salinity ppt<input name="salinity_ppt" type="number" step="0.1" value="2"></label>
-          <label>Turbidity NTU<input name="turbidity_ntu" type="number" step="0.1" value="20"></label>
-          <label>Feed kg/day<input name="feed_kg_day" type="number" step="0.1" value="240"></label>
-          <label>Mortality %<input name="mortality_rate_pct" type="number" step="0.1" value="1.2"></label>
-          <label>Disease signals<input name="disease_signals" value="None observed"></label>
+          <label>Population<input name="population" type="number" min="0" required></label>
+          <label>Avg weight (g)<input name="average_weight_grams" type="number" step="0.1" min="0" required></label>
+          <label>Temperature °C<input name="water_temperature_c" type="number" step="0.1" min="0" required></label>
+          <label>Dissolved oxygen<input name="dissolved_oxygen_mg_l" type="number" step="0.1" min="0" required></label>
+          <label>pH<input name="ph" type="number" step="0.1" min="0" max="14" required></label>
+          <label>Salinity ppt<input name="salinity_ppt" type="number" step="0.1" min="0" required></label>
+          <label>Turbidity NTU<input name="turbidity_ntu" type="number" step="0.1" min="0" required></label>
+          <label>Feed kg/day<input name="feed_kg_day" type="number" step="0.1" min="0" required></label>
+          <label>Mortality %<input name="mortality_rate_pct" type="number" step="0.1" min="0" required></label>
+          <label>Disease signals<input name="disease_signals" placeholder="Optional health notes"></label>
           <div><button type="submit">Add observation</button></div>
         </form>
+        <p class="footnote">Enter live farm observations to generate operational predictions.</p>
         <p id="form-status" class="footnote" aria-live="polite"></p>
       </div>
     </section>

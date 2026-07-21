@@ -53,6 +53,13 @@ OPTIMAL_TEMPERATURE_PENALTY_THRESHOLD = 6.0
 HEALTH_ALERT_THRESHOLD = 55.0
 
 
+def require_non_negative_float(value: Any, field_name: str) -> float:
+    numeric_value = float(value)
+    if numeric_value < 0:
+        raise ValueError(f"{field_name} must be non-negative.")
+    return numeric_value
+
+
 @dataclass
 class FarmRecord:
     farm_name: str
@@ -85,14 +92,14 @@ class FarmRecord:
             species=str(payload["species"]).strip(),
             production_type=str(payload["production_type"]).strip(),
             population=population,
-            average_weight_grams=max(0.0, float(payload["average_weight_grams"])),
+            average_weight_grams=require_non_negative_float(payload["average_weight_grams"], "Average weight"),
             water_temperature_c=float(payload["water_temperature_c"]),
             dissolved_oxygen_mg_l=float(payload["dissolved_oxygen_mg_l"]),
             ph=float(payload["ph"]),
-            salinity_ppt=max(0.0, float(payload["salinity_ppt"])),
-            turbidity_ntu=max(0.0, float(payload["turbidity_ntu"])),
-            feed_kg_day=max(0.0, float(payload["feed_kg_day"])),
-            mortality_rate_pct=max(0.0, float(payload["mortality_rate_pct"])),
+            salinity_ppt=require_non_negative_float(payload["salinity_ppt"], "Salinity"),
+            turbidity_ntu=require_non_negative_float(payload["turbidity_ntu"], "Turbidity"),
+            feed_kg_day=require_non_negative_float(payload["feed_kg_day"], "Feed"),
+            mortality_rate_pct=require_non_negative_float(payload["mortality_rate_pct"], "Mortality rate"),
             disease_signals=str(payload.get("disease_signals", "None observed")).strip() or "None observed",
         )
 

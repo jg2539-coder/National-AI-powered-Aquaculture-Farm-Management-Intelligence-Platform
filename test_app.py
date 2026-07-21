@@ -8,7 +8,7 @@ from app import AppHandler, FARMS, FarmRecord, ThreadingHTTPServer, build_dashbo
 
 
 class AquacultureAppTests(unittest.TestCase):
-    def test_predict_farm_status_returns_expected_metrics(self) -> None:
+    def test_predict_farm_status_optimal_conditions(self) -> None:
         farm = FarmRecord(
             farm_name="Test Farm",
             department="Ouest",
@@ -32,7 +32,7 @@ class AquacultureAppTests(unittest.TestCase):
         self.assertGreaterEqual(prediction["health_score"], 80)
         self.assertGreater(prediction["estimated_growth_g_week"], 0)
 
-    def test_predict_farm_status_flags_poor_conditions(self) -> None:
+    def test_predict_farm_status_suboptimal_conditions(self) -> None:
         farm = FarmRecord(
             farm_name="Risk Farm",
             department="Centre",
@@ -59,7 +59,7 @@ class AquacultureAppTests(unittest.TestCase):
             "Increase aeration and reduce afternoon feeding.",
         )
 
-    def test_build_dashboard_payload_includes_haiti_departments_and_farms(self) -> None:
+    def test_build_dashboard_payload_structure(self) -> None:
         payload = build_dashboard_payload()
 
         self.assertEqual(payload["country"], "Haiti")
@@ -113,6 +113,27 @@ class AquacultureAppTests(unittest.TestCase):
                     "production_type": "Fish",
                     "population": -1,
                     "average_weight_grams": 120,
+                    "water_temperature_c": 28,
+                    "dissolved_oxygen_mg_l": 6.0,
+                    "ph": 7.5,
+                    "salinity_ppt": 1.0,
+                    "turbidity_ntu": 10.0,
+                    "feed_kg_day": 24,
+                    "mortality_rate_pct": 0.5,
+                    "disease_signals": "None observed",
+                }
+            )
+
+    def test_from_payload_rejects_negative_average_weight(self) -> None:
+        with self.assertRaises(ValueError):
+            FarmRecord.from_payload(
+                {
+                    "farm_name": "Negative Weight Farm",
+                    "department": "Ouest",
+                    "species": "Tilapia",
+                    "production_type": "Fish",
+                    "population": 100,
+                    "average_weight_grams": -2,
                     "water_temperature_c": 28,
                     "dissolved_oxygen_mg_l": 6.0,
                     "ph": 7.5,
